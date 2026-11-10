@@ -1,6 +1,7 @@
 # KukiLab Scanner
 
 [![Scanner self-test](https://github.com/kukilab/scanner/actions/workflows/self-test.yml/badge.svg)](https://github.com/kukilab/scanner/actions/workflows/self-test.yml)
+[![Skillverdict](https://app.skillverdict.dev/badge/github.com/kukilab/scanner/skills/kukilab-scan.svg)](https://app.skillverdict.dev/github.com/kukilab/scanner/skills/kukilab-scan)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
 **KukiLab** — гибридный сканер безопасности AI-навыков (Claude Code Skills, Codex, MCP), который не только находит проблемы, но и доводит навык до состояния **SAFE**: `--fix` чистит Unicode-стеганографию и дописывает декларацию `allowed-tools`, SARIF-отчёт попадает в GitHub Security, а CI-гейт останавливает опасный PR.
