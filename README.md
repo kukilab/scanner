@@ -26,7 +26,7 @@ npx skills add kukilab/scanner --skill kukilab-scan
 
 Исходник навыка: [`skills/kukilab-scan`](https://github.com/kukilab/scanner/tree/main/skills/kukilab-scan).
 
-Навык `kukilab-scan` запускает Step 0 и Step 1 скриптом, а Step 2 (семантику прозы) выполняет сам агент — без ключей API и внешних сервисов. Движок подтягивается из этого репозитория по релизу `v1.0.0`, его коммит сверяется с закреплённым в скрипте. Плейбук ремонта до SAFE — в [`skills/kukilab-scan/references/fix-playbook.md`](skills/kukilab-scan/references/fix-playbook.md).
+Навык `kukilab-scan` запускает Step 0 и Step 1 скриптом, а Step 2 (семантику прозы) выполняет сам агент — без ключей API и внешних сервисов. Движок подтягивается из этого репозитория по релизу `v1.0.0`, репозиторий, тег и коммит записаны в `skills/kukilab-scan/engine.json`, скрипт сверяет коммит перед запуском. Плейбук ремонта до SAFE — в [`skills/kukilab-scan/references/fix-playbook.md`](skills/kukilab-scan/references/fix-playbook.md).
 
 ## GitHub Action
 
