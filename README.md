@@ -28,7 +28,7 @@ npx skills add kukilab/scanner --skill kukilab-scan
 ## GitHub Action
 
 ```yaml
-- uses: kukilab/scanner@main
+- uses: kukilab/scanner@v1
   with:
     path: .
     fail-on: BLOCK                      # BLOCK | CAUTION | NEVER

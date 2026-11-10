@@ -9,7 +9,7 @@
 | Файл / папка | Что это |
 |---|---|
 | `src/kukilab_scanner.py` | Движок: Step 0 → Step 1 → Step 2 → вердикт → SARIF 2.1.0 |
-| `action.yml` | Composite GitHub Action — `uses: kukilab/scanner@main` (после релиза `@v1`) |
+| `action.yml` | Composite GitHub Action — `uses: kukilab/scanner@v1` |
 | `requirements.txt`, `setup.sh`, `setup.ps1` | Зависимости и установка venv одним кликом |
 | `.github/workflows/self-test.yml` | Самопроверка: clean → SAFE, malicious → BLOCK, SARIF валиден, action работает |
 | `examples/demo-clean-skill/` | Эталонный безопасный навык |
@@ -74,7 +74,7 @@ scanner/
 
 ## C. Репозиторий проверяемого навыка (каждый)
 
-1. Скопировать `templates/kukilab-scan.yml` в проверяемый репозиторий как **`.github/workflows/kukilab-scan.yml`** — он уже ссылается на `kukilab/scanner@main`, править ничего не нужно.
+1. Скопировать `templates/kukilab-scan.yml` в проверяемый репозиторий как **`.github/workflows/kukilab-scan.yml`** — он уже ссылается на `kukilab/scanner@v1`, править ничего не нужно.
 2. (Опционально, для настоящего LLM-пасса) **Settings → Secrets and variables → Actions → New repository secret**: имя `ANTHROPIC_API_KEY`. Без ключа Step 2 работает на офлайн-эвристиках и сборка не падает.
 3. **Settings → Code security → Code scanning** — убедиться, что включено (на публичных репозиториях включено по умолчанию; на приватных нужен GitHub Advanced Security — тогда шаг upload-sarif можно убрать, отчёт всё равно будет в Summary и артефакте).
 4. Чтобы PR блокировался при вердикте BLOCK: **Settings → Branches → Branch protection rule** для `main` → *Require status checks to pass* → выбрать `KukiLab Step 0 / 1 / 2`.
@@ -87,7 +87,7 @@ scanner/
 Минимальный вариант без шаблона — три строки в любом workflow:
 
 ```yaml
-- uses: kukilab/scanner@main
+- uses: kukilab/scanner@v1
   with:
     path: .
 ```
