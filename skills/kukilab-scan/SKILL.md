@@ -1,10 +1,11 @@
 ---
 name: kukilab-scan
 description: "Проверка безопасности AI-навыка (SKILL.md, скрипты, документация) сканером KukiLab и доведение его до вердикта SAFE: Step 0 очистка Unicode, Step 1 статический анализ, Step 2 семантический разбор прозы, который выполняет сам агент без внешних API. Используй, когда просят проверить скилл или навык на безопасность, провести аудит SKILL.md, найти промт-инъекции или скрытые символы, получить SARIF-отчёт, починить навык до SAFE, или упоминают KukiLab. Триггеры: проверь скилл, аудит навыка, kukilab, scan skill, довести до SAFE, allowed-tools."
+license: MIT
 allowed-tools: Read, Glob, Grep, Bash
 metadata:
   author: kukilab
-  version: "1.0.0"
+  version: "1.0.1"
   language: ru
   homepage: https://github.com/kukilab/scanner
 ---
@@ -24,7 +25,7 @@ bash scripts/run.sh <путь> --no-llm --fail-on NEVER --quiet \
   --json .kukilab/report.json --sarif .kukilab/report.sarif --markdown .kukilab/report.md
 ```
 
-`run.sh` при первом запуске клонирует движок `kukilab/scanner` по закреплённому тегу `v1` в `.kukilab/engine` (единственное сетевое действие навыка, обычный `git clone` с GitHub); дальше работает локально. Скрипт читает только файлы внутри указанного пути и пишет только в `.kukilab/`. Добавь `.kukilab/` в `.gitignore` проверяемого репозитория. Если в репозитории есть `.kukilab.yaml` или `.skillspector/<навык>.yaml`, подавления из них применяются автоматически (отключить: `--no-baseline`).
+`run.sh` при первом запуске клонирует движок `kukilab/scanner` по релизу `v1.0.0` в `.kukilab/engine` и сверяет его коммит с закреплённым в скрипте; при несовпадении запуск останавливается (единственное сетевое действие навыка, обычный `git clone` с GitHub); дальше работает локально. Скрипт читает только файлы внутри указанного пути и пишет только в `.kukilab/`. Добавь `.kukilab/` в `.gitignore` проверяемого репозитория. Если в репозитории есть `.kukilab.yaml` или `.skillspector/<навык>.yaml`, подавления из них применяются автоматически (отключить: `--no-baseline`).
 
 Прочитай `.kukilab/report.json`: поля `verdict`, `risk_score`, `findings[]` (каждая находка — `rule_id`, `severity`, `confidence`, `file`, `line`, `title`, `excerpt`, `suppressed`).
 
