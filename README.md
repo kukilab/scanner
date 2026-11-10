@@ -24,7 +24,9 @@ python src/kukilab_scanner.py /path/to/skill --sarif results.sarif --json result
 npx skills add kukilab/scanner --skill kukilab-scan
 ```
 
-Навык `kukilab-scan` запускает Step 0 и Step 1 скриптом, а Step 2 (семантику прозы) выполняет сам агент — без ключей API и внешних сервисов. Движок подтягивается из этого репозитория по тегу `v1`. Плейбук ремонта до SAFE — в [`skills/kukilab-scan/references/fix-playbook.md`](skills/kukilab-scan/references/fix-playbook.md).
+Исходник навыка: [`skills/kukilab-scan`](https://github.com/kukilab/scanner/tree/main/skills/kukilab-scan).
+
+Навык `kukilab-scan` запускает Step 0 и Step 1 скриптом, а Step 2 (семантику прозы) выполняет сам агент — без ключей API и внешних сервисов. Движок подтягивается из этого репозитория по релизу `v1.0.0`, его коммит сверяется с закреплённым в скрипте. Плейбук ремонта до SAFE — в [`skills/kukilab-scan/references/fix-playbook.md`](skills/kukilab-scan/references/fix-playbook.md).
 
 ## GitHub Action
 
@@ -57,7 +59,7 @@ npx skills add kukilab/scanner --skill kukilab-scan
 |---|---|
 | `src/kukilab_scanner.py` | Движок (только стандартная библиотека; `pyyaml` опционально) |
 | `action.yml` | Composite GitHub Action |
-| `skills/kukilab-scan/` | Навык для Claude Code / Codex: аудит и ремонт с хост-LLM Step 2 |
+| [`skills/kukilab-scan/`](https://github.com/kukilab/scanner/tree/main/skills/kukilab-scan) | Навык для Claude Code / Codex: аудит и ремонт с хост-LLM Step 2 |
 | `examples/demo-clean-skill/` | Эталон безопасного навыка → `SAFE` |
 | `examples/demo-malicious-skill/` | Тестовый вредоносный навык → `BLOCK` (фикстура для self-test) |
 | `templates/` | Workflow для проверяемых репозиториев, README-шаблон с бейджами, чек-лист |
