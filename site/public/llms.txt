@@ -1,9 +1,0 @@
-# KukiLab
-
-> Hybrid security scanner for AI agent skills (Claude Code, Codex, MCP) that repairs skills until the verdict is SAFE.
-
-- Repository: https://github.com/kukilab/scanner (MIT)
-- GitHub Action: `uses: kukilab/scanner@v1`
-- Agent skill: `npx skills add kukilab/scanner --skill kukilab-scan`
-- Threat taxonomy P-01..P-10: https://github.com/kukilab/scanner/blob/main/docs/llm-threat-taxonomy-prompt-guide.md
-- Related, independent project that checks skills and benchmarks scanners: https://skillverdict.dev
