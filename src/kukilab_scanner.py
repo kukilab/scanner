@@ -203,6 +203,7 @@ class Report:
     manifest_path: str = ""
     allowed_tools: Optional[str] = None
     cached: bool = False
+    baseline_skipped: int = 0       # правил подавления найдено, но не применено (нет --baseline)
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +756,9 @@ def render_markdown(report: Report) -> str:
              ""]
     if report.cached:
         lines.append("> ℹ️ Пакет не изменился с последнего аудита — результат взят из кэша хэшей.\n")
+    if report.baseline_skipped:
+        lines.append(f"> В проверяемом репозитории найдено правил подавления: {report.baseline_skipped}. Они не применены: "
+                     "подавления из проверяемого репозитория учитываются только с флагом `--baseline`.\n")
     if report.fixes_applied:
         lines.append("## Применённые исправления (--fix)")
         lines += [f"- {x}" for x in report.fixes_applied]
@@ -903,7 +907,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="При каком вердикте возвращать ненулевой код (по умолчанию BLOCK)")
     ap.add_argument("--cache", metavar="FILE", help="JSON-файл кэша SHA-256 проверенных пакетов (пропуск неизмененных)")
     ap.add_argument("--force", action="store_true", help="Игнорировать кэш и сканировать заново")
-    ap.add_argument("--no-baseline", action="store_true", help="Не применять подавления из .kukilab.yaml / .skillspector/*.yaml")
+    ap.add_argument("--baseline", action="store_true",
+                    help="Применить подавления из .kukilab.yaml / .skillspector/*.yaml проверяемого репозитория. "
+                         "По умолчанию они не применяются: файл подавлений лежит в том же репозитории, что и проверяемый навык, "
+                         "и им можно скрыть собственные находки. Включайте только для своего репозитория")
+    ap.add_argument("--no-baseline", action="store_true",
+                    help="Не применять подавления (поведение по умолчанию; флаг оставлен для совместимости и отменяет --baseline)")
     ap.add_argument("--version", action="version", version=f"{TOOL_NAME} {TOOL_VERSION}")
     return ap
 
@@ -944,10 +953,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             report.llm_mode = "offline"
             if not api_key and not args.no_llm:
                 log("[step2] ANTHROPIC_API_KEY не задан — Step 2 выполнен в офлайн-режиме (эвристики)")
-        if not args.no_baseline:
-            n_sup = apply_suppressions(report, load_suppressions(root))
+        rules = load_suppressions(root)
+        if args.baseline and not args.no_baseline:
+            n_sup = apply_suppressions(report, rules)
             if n_sup:
-                log(f"[baseline] подавлено находок: {n_sup} (см. раздел отчета; --no-baseline отключает)")
+                log(f"[baseline] подавлено находок: {n_sup} (см. раздел отчета)")
+        elif rules:
+            report.baseline_skipped = len(rules)
+            log(f"[baseline] найдено правил подавления: {len(rules)}, они НЕ применены. "
+                "Для своего репозитория добавьте --baseline")
         if args.fix:
             report.package_hash = package_hash(root)   # хэш после исправлений
         compute_verdict(report)

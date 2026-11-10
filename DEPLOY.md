@@ -44,7 +44,7 @@ python src/kukilab_scanner.py /путь/к/навыку --fix          # очи�
 ANTHROPIC_API_KEY=sk-ant-... python src/kukilab_scanner.py /путь/к/навыку   # Step 2 через API
 ```
 
-Ключи CLI: `--fix`, `--sarif FILE`, `--json FILE`, `--markdown FILE`, `--quiet`, `--no-llm`, `--model`, `--fail-on BLOCK|CAUTION|NEVER`, `--cache FILE` (пропуск неизмененных пакетов по SHA-256), `--force`, `--no-baseline`.
+Ключи CLI: `--fix`, `--sarif FILE`, `--json FILE`, `--markdown FILE`, `--quiet`, `--no-llm`, `--model`, `--fail-on BLOCK|CAUTION|NEVER`, `--cache FILE` (пропуск неизмененных пакетов по SHA-256), `--force`, `--baseline` (применить подавления из проверяемого репозитория; по умолчанию они не применяются).
 
 ---
 
@@ -113,7 +113,7 @@ scanner/
 - **Вердикт** — BLOCK: P-01/P-03/P-05/P-10 HIGH+ с уверенностью ≥0.70, либо risk ≥70; CAUTION: P-02/P-06/P-08/P-09 MEDIUM+ ≥0.60, отсутствие allowed-tools, risk 25–69; иначе SAFE.
 - **Вывод** — Markdown (stdout / `--markdown`), JSON, SARIF 2.1.0 (`rules[]` с `security-severity`, `results[]` с `region.startLine/startColumn/snippet`, `partialFingerprints`).
 - **Кэш** — `--cache FILE`: SHA-256 всего пакета; неизмененный пакет не сканируется повторно, отчет берется из кэша.
-- **Baseline-подавления** — проверенные ложные срабатывания фиксируются в `.kukilab.yaml` (в каталоге навыка или до двух уровней выше) в формате `rules: [{id, path, message, reason}]` (glob-маски); существующие `.skillspector/<навык>.yaml` читаются в том же формате. Подавленные находки не влияют на вердикт, показываются отдельным разделом и уходят в SARIF как `suppressions` (`kind: external`, `status: accepted`). Отключить: `--no-baseline`.
+- **Baseline-подавления** — проверенные ложные срабатывания фиксируются в `.kukilab.yaml` (в каталоге навыка или до двух уровней выше) в формате `rules: [{id, path, message, reason}]` (glob-маски); существующие `.skillspector/<навык>.yaml` читаются в том же формате. Подавленные находки не влияют на вердикт, показываются отдельным разделом и уходят в SARIF как `suppressions` (`kind: external`, `status: accepted`). Подавления применяются только с флагом `--baseline` (в Action: `extra-args: --baseline`): файл лежит в проверяемом репозитории, и без явного согласия того, кто запускает проверку, им можно было бы скрыть собственные находки. Если файл найден, а флага нет, отчёт сообщает, сколько правил не применено.
 
 ## Известное ограничение
 

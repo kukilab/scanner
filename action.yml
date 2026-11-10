@@ -35,7 +35,7 @@ inputs:
     required: false
     default: "claude-haiku-5-5"
   extra-args:
-    description: "Any additional CLI arguments (e.g. --no-baseline --cache .kukilab_cache.json)."
+    description: "Any additional CLI arguments (e.g. --baseline --cache .kukilab_cache.json). Suppression files in the scanned repository are ignored unless --baseline is passed."
     required: false
     default: ""
   anthropic-api-key:
