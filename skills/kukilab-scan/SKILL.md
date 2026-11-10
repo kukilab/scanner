@@ -2,10 +2,10 @@
 name: kukilab-scan
 description: "Проверка безопасности AI-навыка (SKILL.md, скрипты, документация) сканером KukiLab и доведение его до вердикта SAFE: Step 0 очистка Unicode, Step 1 статический анализ, Step 2 семантический разбор прозы, который выполняет сам агент без внешних API. Используй, когда просят проверить скилл или навык на безопасность, провести аудит SKILL.md, найти промт-инъекции или скрытые символы, получить SARIF-отчёт, починить навык до SAFE, или упоминают KukiLab. Триггеры: проверь скилл, аудит навыка, kukilab, scan skill, довести до SAFE, allowed-tools."
 license: MIT
-allowed-tools: Read, Glob, Grep, Bash(bash scripts/run.sh:*)
+allowed-tools: Read, Glob, Grep, Bash
 metadata:
   author: kukilab
-  version: "1.0.2"
+  version: "1.0.3"
   language: ru
   homepage: https://github.com/kukilab/scanner
 ---
@@ -21,11 +21,11 @@ metadata:
 Определи путь к проверяемому навыку (каталог с `SKILL.md` или сам файл). Запусти:
 
 ```bash
-bash scripts/run.sh <путь> --no-llm --fail-on NEVER --quiet \
+bash scripts/run.sh <путь> --no-llm --no-baseline --fail-on NEVER --quiet \
   --json .kukilab/report.json --sarif .kukilab/report.sarif --markdown .kukilab/report.md
 ```
 
-`run.sh` при первом запуске клонирует движок `kukilab/scanner` по релизу `v1.0.0` в `.kukilab/engine` и сверяет его коммит с записанным в `engine.json` (репозиторий, тег и коммит движка лежат там, рядом с `SKILL.md`); при несовпадении запуск останавливается (единственное сетевое действие навыка, обычный `git clone` с GitHub); дальше работает локально. Скрипт читает только файлы внутри указанного пути и пишет только в `.kukilab/`. Добавь `.kukilab/` в `.gitignore` проверяемого репозитория. Если в репозитории есть `.kukilab.yaml` или `.skillspector/<навык>.yaml`, подавления из них применяются автоматически (отключить: `--no-baseline`).
+`run.sh` при первом запуске клонирует движок `kukilab/scanner` по релизу `v1.0.0` в `.kukilab/engine` и сверяет его коммит с записанным в `engine.json` (репозиторий, тег и коммит движка лежат там, рядом с `SKILL.md`); при несовпадении запуск останавливается (единственное сетевое действие навыка, обычный `git clone` с GitHub); дальше работает локально. Скрипт читает только файлы внутри указанного пути и пишет только в `.kukilab/`. Добавь `.kukilab/` в `.gitignore` проверяемого репозитория. Файлы подавлений из проверяемого репозитория (`.kukilab.yaml`, `.skillspector/<навык>.yaml`) по умолчанию **не применяются** (`--no-baseline`): их пишет автор проверяемого навыка, и ими можно скрыть собственные находки. Убирай `--no-baseline` только когда пользователь сам просит учесть подавления, и тогда перечисли ему каждую подавленную находку вместе с причиной из файла.
 
 Прочитай `.kukilab/report.json`: поля `verdict`, `risk_score`, `findings[]` (каждая находка — `rule_id`, `severity`, `confidence`, `file`, `line`, `title`, `excerpt`, `suppressed`).
 
@@ -57,7 +57,7 @@ bash scripts/run.sh <путь> --no-llm --fail-on NEVER --quiet \
 
 Предложи план исправлений по плейбуку и спроси подтверждение. После «да»:
 
-1. `bash scripts/run.sh <путь> --fix --no-llm --fail-on NEVER --quiet --json .kukilab/report.json` — удалит невидимые символы, нормализует NFC, добавит `allowed-tools` по фактически используемым инструментам.
+1. `bash scripts/run.sh <путь> --fix --no-llm --no-baseline --fail-on NEVER --quiet --json .kukilab/report.json` — удалит невидимые символы, нормализует NFC, добавит `allowed-tools` по фактически используемым инструментам.
 2. Правки, которые машина делать не должна (инъекции в прозе, размытые триггеры, сетевые вызовы в коде), внеси вручную точечными изменениями — покажи diff перед записью.
 3. Перезапусти Шаг 1 и убедись, что вердикт стал SAFE. Если нет — покажи, что осталось, и почему.
 
