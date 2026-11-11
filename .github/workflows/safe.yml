@@ -35,8 +35,8 @@ on:
         default: "."
     secrets:
       anthropic-api-key:
-        description: "Anthropic API key for Step 2."
-        required: true
+        description: "Anthropic API key for Step 2. Without it the scan runs offline and the badge stays STATIC PASSED."
+        required: false
     outputs:
       verdict:
         description: "SAFE, CAUTION or BLOCK"
@@ -53,6 +53,8 @@ jobs:
   safe:
     name: KukiLab Step 0 / 1 / 2 and SAFE badge
     runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.anthropic-api-key != '' }}
     outputs:
       verdict: ${{ steps.scan.outputs.verdict }}
       badge: ${{ steps.attest.outputs.badge }}
@@ -71,9 +73,15 @@ jobs:
           markdown: ${{ runner.temp }}/kukilab-report.md
           anthropic-api-key: ${{ secrets.anthropic-api-key }}
 
+      - name: No API key, no SAFE badge
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "::notice title=KukiLab SAFE needs an API key::The secret with the Anthropic API key is not set, so Step 2 ran offline. The badge stays STATIC PASSED."
+          printf '\n### KukiLab badge: not updated\n\nThe Anthropic API key is not set, so the semantic pass (Step 2) ran offline. Add the secret and run the workflow again to get SAFE.\n' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Report SAFE to kukilab.dev
         id: attest
-        if: steps.scan.outputs.verdict == 'SAFE'
+        if: steps.scan.outputs.verdict == 'SAFE' && env.HAS_KEY == 'true'
         env:
           SKILL_PATH: ${{ inputs.path }}
           REPORT: ${{ runner.temp }}/kukilab.json
