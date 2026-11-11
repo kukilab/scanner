@@ -41,6 +41,33 @@ npx skills add kukilab/scanner --skill kukilab-scan
 
 Полный workflow с загрузкой SARIF в Security → Code scanning: [`templates/kukilab-scan.yml`](templates/kukilab-scan.yml). Пошаговое развертывание: [`DEPLOY.md`](DEPLOY.md).
 
+## Бейдж для README
+
+Живой бейдж навыка отдаёт [kukilab.dev](https://kukilab.dev): вставьте ссылку на навык в «Проверить по ссылке» и скопируйте строку из блока «Бейдж для README».
+
+- **STATIC PASSED** — статическая проверка на сайте пройдена (Step 0, Step 1, офлайн-эвристики Step 2). Ключ API не нужен.
+- **SAFE** — пройден и смысловой проход Step 2. Его запускает готовый рабочий процесс в репозитории навыка, с вашим ключом API Anthropic:
+
+```yaml
+# .github/workflows/kukilab-safe.yml
+name: KukiLab SAFE
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  safe:
+    uses: kukilab/scanner/.github/workflows/safe.yml@v1
+    with:
+      path: my-skill          # папка с SKILL.md; "." для навыка в корне
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Рабочий процесс сообщает результат на kukilab.dev вместе с токеном, который подписывает GitHub: он подтверждает репозиторий, коммит и то, что выполнялся именно этот файл. Сервис сам пересчитывает статическую часть на том же коммите. SAFE действует для проверенного коммита: после нового коммита бейдж показывает STATIC PASSED, пока рабочий процесс не отработает снова. Ключ API на kukilab.dev не передаётся.
+
 ## Таксономия
 
 | Код | Угроза | | Код | Угроза |

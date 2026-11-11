@@ -1,0 +1,120 @@
+# KukiLab SAFE — reusable workflow.
+#
+# Runs the full engine (Step 0, Step 1 and Step 2 through the Anthropic API) on a skill and, when the verdict is
+# SAFE, tells kukilab.dev so that the skill's badge turns from STATIC PASSED to SAFE for this commit.
+#
+# In the skill's repository:
+#
+#   name: KukiLab SAFE
+#   on:
+#     push:
+#       branches: [main]
+#   permissions:
+#     contents: read
+#     id-token: write
+#   jobs:
+#     safe:
+#       uses: kukilab/scanner/.github/workflows/safe.yml@v1
+#       with:
+#         path: my-skill            # folder with SKILL.md; "." for a skill in the repository root
+#       secrets:
+#         anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+#
+# Why a reusable workflow and not just the action: the token GitHub signs for this job names this very file
+# (job_workflow_ref). kukilab.dev accepts a result only with that proof, so a result cannot be made up by
+# changing the steps. The service also recomputes the static part on the same commit. The API key stays in
+# the caller's repository; it is never sent to kukilab.dev.
+name: KukiLab SAFE
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: "Folder of the skill (with SKILL.md), relative to the repository root."
+        type: string
+        default: "."
+    secrets:
+      anthropic-api-key:
+        description: "Anthropic API key for Step 2."
+        required: true
+    outputs:
+      verdict:
+        description: "SAFE, CAUTION or BLOCK"
+        value: ${{ jobs.safe.outputs.verdict }}
+      badge:
+        description: "SAFE when kukilab.dev accepted the result, otherwise the reason it did not"
+        value: ${{ jobs.safe.outputs.badge }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  safe:
+    name: KukiLab Step 0 / 1 / 2 and SAFE badge
+    runs-on: ubuntu-latest
+    outputs:
+      verdict: ${{ steps.scan.outputs.verdict }}
+      badge: ${{ steps.attest.outputs.badge }}
+    steps:
+      - name: Check out the skill
+        uses: actions/checkout@v4
+
+      - name: Scan
+        id: scan
+        uses: kukilab/scanner@v1
+        with:
+          path: ${{ inputs.path }}
+          fail-on: BLOCK
+          sarif: ${{ runner.temp }}/kukilab.sarif
+          json: ${{ runner.temp }}/kukilab.json
+          markdown: ${{ runner.temp }}/kukilab-report.md
+          anthropic-api-key: ${{ secrets.anthropic-api-key }}
+
+      - name: Report SAFE to kukilab.dev
+        id: attest
+        if: steps.scan.outputs.verdict == 'SAFE'
+        env:
+          SKILL_PATH: ${{ inputs.path }}
+          REPORT: ${{ runner.temp }}/kukilab.json
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+
+          report = json.load(open(os.environ["REPORT"]))
+          body = {"path": os.environ["SKILL_PATH"], "verdict": report["verdict"], "llm_mode": report.get("llm_mode", ""),
+                  "package_hash": report["package_hash"], "risk_score": report["risk_score"],
+                  "engine_version": report["tool"]["version"]}
+
+          def call(url, headers, data=None):
+            request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
+            try:
+              with urllib.request.urlopen(request, timeout=60) as response:
+                return response.status, json.loads(response.read())
+            except urllib.error.HTTPError as error:
+              try:
+                return error.code, json.loads(error.read())
+              except ValueError:
+                return error.code, {"error": "http_%d" % error.code}
+
+          # a token signed by GitHub for this job; it names the repository, the commit and this workflow file
+          _, token = call(os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=https://kukilab.dev",
+                          {"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
+          status, answer = call("https://kukilab.dev/api/attest",
+                                {"Authorization": "Bearer " + token["value"], "Content-Type": "application/json",
+                                 "User-Agent": "kukilab-safe-workflow"}, json.dumps(body).encode())
+          accepted = status == 200 and answer.get("accepted")
+          reason = "SAFE" if accepted else answer.get("error", "http_%d" % status)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write("badge=%s\n" % reason)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            if accepted:
+              summary.write("\n### KukiLab badge: SAFE\n\nkukilab.dev accepted the result for commit `%s`.\n\n![KukiLab](%s)\n"
+                            % (answer["commit"][:7], answer["badge"]))
+            else:
+              summary.write("\n### KukiLab badge: not updated\n\nkukilab.dev did not accept the result: `%s`.\n" % reason)
+          print("kukilab.dev:", status, json.dumps(answer))
+          if not accepted:
+            # the scan itself passed; only the badge was not updated, so the job is marked without failing the build
+            print("::warning title=KukiLab badge not updated::kukilab.dev answered: %s" % reason)
+          PY
