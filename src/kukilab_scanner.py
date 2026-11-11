@@ -38,7 +38,7 @@ except Exception:  # pragma: no cover
     yaml = None
 
 TOOL_NAME = "KukiLab Scanner"
-TOOL_VERSION = "3.0.0"
+TOOL_VERSION = "3.1.0"
 TOOL_URI = "https://github.com/kukilab/scanner"
 
 DEFAULT_MODEL = os.environ.get("KUKILAB_MODEL", "claude-haiku-5-5")
@@ -115,7 +115,10 @@ CODE_PATTERNS: List[Tuple[str, str, float, re.Pattern, str]] = [
     ("P-05", "HIGH", 0.90, re.compile(r"(~|\$HOME|%USERPROFILE%|/root|/home/[^/\s]+)/\.ssh\b|\bid_(rsa|ed25519|ecdsa)\b|authorized_keys"), "Доступ к SSH-ключам"),
     ("P-05", "HIGH", 0.85, re.compile(r"(~|\$HOME|%USERPROFILE%)/\.(aws|gnupg|docker/config\.json|npmrc|netrc|git-credentials|config/gcloud)\b"), "Доступ к хранилищам учетных данных"),
     ("P-05", "HIGH", 0.80, re.compile(r"(?<![\w/.-])\.env(\.local|\.production)?\b(?!\.example)"), "Чтение файла .env"),
-    ("P-05", "HIGH", 0.75, re.compile(r"\b(os\.environ(\.copy\(\)|\.items\(\))|dict\(os\.environ\)|process\.env\b(?!\.\w)|\benv\s*>\s*\S|\bprintenv\b|Get-ChildItem\s+Env:)"), "Выгрузка всех переменных окружения"),
+    # Копия окружения внутри процесса (обычно для запуска дочерней программы) сама по себе не утечка: MEDIUM.
+    # Отправку окружения наружу ловит P-03 (сетевой вызов + os.environ / process.env в одной строке).
+    ("P-05", "MEDIUM", 0.60, re.compile(r"\b(os\.environ(\.copy\(\)|\.items\(\))|dict\(os\.environ\)|process\.env\b(?!\.\w))"), "Копирование всех переменных окружения"),
+    ("P-05", "HIGH", 0.75, re.compile(r"(\benv\s*>\s*\S|\bprintenv\b|Get-ChildItem\s+Env:)"), "Выгрузка всех переменных окружения"),
     ("P-05", "MEDIUM", 0.60, re.compile(r"(ANTHROPIC|OPENAI|AWS_SECRET|GITHUB|STRIPE|SLACK)_?(API_)?(KEY|TOKEN|SECRET)\b"), "Обращение к секрету по имени переменной"),
     ("P-03", "CRITICAL", 0.85, re.compile(r"\b(curl|wget|Invoke-WebRequest|requests\.(post|put)|fetch|urlopen|httpx\.(post|put))\b[^\n]{0,160}(\.env|\.ssh|os\.environ|process\.env|id_rsa|passwd|\$\{?[A-Z_]*(KEY|TOKEN|SECRET)\}?)"), "Сетевой запрос с передачей секретов/файлов"),
     ("P-03", "HIGH", 0.70, re.compile(r"\b(nc|ncat|netcat)\s+(-e|-c|[\w.-]+\s+\d{2,5})\b|/dev/tcp/"), "Обратное/сырое TCP-соединение"),
@@ -721,7 +724,9 @@ def compute_verdict(report: Report) -> None:
     block = block or any(f.rule_id in ("P-04", "P-07") and f.severity in ("HIGH", "CRITICAL") and f.confidence >= 0.85 for f in active)
     block = block or report.risk_score >= 70
     caution = any(f.rule_id in CAUTION_PATTERNS and f.severity in ("MEDIUM", "HIGH") and f.confidence >= 0.60 for f in active)
-    caution = caution or any(f.rule_id in ("LP3", "MF1", "AST7") for f in active)
+    # LP3 (нет allowed-tools) остаётся находкой и входит в риск, но сам по себе вердикт не меняет:
+    # поле в спецификации навыков необязательное, и без него живёт большинство опубликованных навыков.
+    caution = caution or any(f.rule_id in ("MF1", "AST7") for f in active)
     caution = caution or 25 <= report.risk_score < 70
     caution = caution or any(f.severity in ("HIGH", "CRITICAL") for f in active)
 
