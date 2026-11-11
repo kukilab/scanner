@@ -1,6 +1,7 @@
 # KukiLab Scanner
 
 [![Scanner self-test](https://github.com/kukilab/scanner/actions/workflows/self-test.yml/badge.svg)](https://github.com/kukilab/scanner/actions/workflows/self-test.yml)
+[![KukiLab](https://kukilab.dev/badge/github.com/kukilab/scanner/skills/kukilab-scan.svg)](https://kukilab.dev/?check=https%3A%2F%2Fgithub.com%2Fkukilab%2Fscanner%2Ftree%2FHEAD%2Fskills%2Fkukilab-scan)
 [![Skillverdict](https://app.skillverdict.dev/badge/github.com/kukilab/scanner/skills/kukilab-scan.svg)](https://app.skillverdict.dev/github.com/kukilab/scanner/skills/kukilab-scan)
 [![License: MIT](https://img.shields.io/github/license/kukilab/scanner?color=brightgreen)](LICENSE)
 
