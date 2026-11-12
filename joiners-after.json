@@ -1,0 +1,20 @@
+{
+  "target": "/tmp/joiners",
+  "scanned_at": "2026-11-12T13:51:29Z",
+  "files_scanned": 4,
+  "package_hash": "5bd4560cd69fef5827b911090763c5d5b493407043022ca3b01b371760f73fca",
+  "findings": [],
+  "risk_score": 0,
+  "verdict": "SAFE",
+  "llm_mode": "offline",
+  "llm_summary": "",
+  "fixes_applied": [],
+  "manifest_path": "SKILL.md",
+  "allowed_tools": "Read, Write",
+  "cached": false,
+  "baseline_skipped": 0,
+  "tool": {
+    "name": "KukiLab Scanner",
+    "version": "3.2.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "target": "/tmp/joiners",
+  "scanned_at": "2026-11-12T13:51:29Z",
+  "files_scanned": 4,
+  "package_hash": "5bd4560cd69fef5827b911090763c5d5b493407043022ca3b01b371760f73fca",
+  "findings": [
+    {
+      "rule_id": "P-08",
+      "severity": "MEDIUM",
+      "confidence": 0.9,
+      "title": "Невидимый символ U+200D (ZERO WIDTH JOINER) ×2",
+      "description": "В файле обнаружено 2 вхождений U+200D. Удалено при --fix.",
+      "file": "notes.md",
+      "line": 4,
+      "column": 10,
+      "excerpt": "hidden ig�nore and 👍�x",
+      "step": "step0",
+      "fixed": true,
+      "auto_fix": true,
+      "suppressed": false,
+      "suppression_reason": ""
+    }
+  ],
+  "risk_score": 0,
+  "verdict": "SAFE",
+  "llm_mode": "offline",
+  "llm_summary": "",
+  "fixes_applied": [
+    "Step 0: очищен и NFC-нормализован notes.md"
+  ],
+  "manifest_path": "SKILL.md",
+  "allowed_tools": "Read, Write",
+  "cached": false,
+  "baseline_skipped": 0,
+  "tool": {
+    "name": "KukiLab Scanner",
+    "version": "3.2.0"
+  }
+}
