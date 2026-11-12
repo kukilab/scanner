@@ -38,7 +38,7 @@ except Exception:  # pragma: no cover
     yaml = None
 
 TOOL_NAME = "KukiLab Scanner"
-TOOL_VERSION = "3.1.1"
+TOOL_VERSION = "3.2.0"
 TOOL_URI = "https://github.com/kukilab/scanner"
 
 DEFAULT_MODEL = os.environ.get("KUKILAB_MODEL", "claude-haiku-5-5")
@@ -95,6 +95,51 @@ ZERO_WIDTH = {
 BIDI = {c: unicodedata.name(chr(c), "BIDI CONTROL") for c in list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A))}
 INVISIBLE = {**ZERO_WIDTH, **BIDI}
 # U+FEFF в самом начале файла — легитимный BOM; удаляем, но не считаем угрозой.
+
+# Соединители, без которых меняется видимый текст, не считаются скрытыми символами и не удаляются:
+# ZWJ внутри эмодзи-последовательности (семья, флаг, профессия) и ZWJ/ZWNJ между буквами одной
+# письменности, где они управляют начертанием (персидский, хинди и другие). В любом другом месте
+# те же символы остаются находкой P-08.
+JOINERS = {0x200C, 0x200D}
+JOINING_SCRIPTS = {"ARABIC", "SYRIAC", "DEVANAGARI", "BENGALI", "GURMUKHI", "GUJARATI", "ORIYA", "TAMIL",
+                   "TELUGU", "KANNADA", "MALAYALAM", "SINHALA"}
+EMOJI_RANGES = ((0x1F000, 0x1FAFF), (0x2600, 0x27BF), (0x2B00, 0x2BFF), (0x2190, 0x21FF), (0x2300, 0x23FF))
+
+
+def is_emoji(ch: str) -> bool:
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in EMOJI_RANGES)
+
+
+def joining_script(ch: str) -> str:
+    word = unicodedata.name(ch, "").split(" ", 1)[0]
+    return word if word in JOINING_SCRIPTS else ""
+
+
+def legit_joiner(text: str, i: int) -> bool:
+    """Соединитель на позиции i нужен видимому тексту: его удаление изменило бы эмодзи или написание слова."""
+    cp = ord(text[i])
+    if cp not in JOINERS or i == 0 or i + 1 >= len(text):
+        return False
+    before, after = text[i - 1], text[i + 1]
+    if cp == 0x200D and is_emoji(after):
+        if is_emoji(before) or (ord(before) == 0xFE0F and i >= 2 and is_emoji(text[i - 2])):
+            return True
+    script = joining_script(before)
+    return bool(script) and script == joining_script(after)
+
+
+def hidden_positions(text: str) -> List[int]:
+    """Позиции невидимых символов, которые считаются находкой и удаляются при --fix."""
+    return [i for i, ch in enumerate(text) if ord(ch) in INVISIBLE and not legit_joiner(text, i)]
+
+
+def strip_invisible(text: str) -> str:
+    """Текст без скрытых символов; BOM в начале файла убирается, нужные тексту соединители остаются."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    drop = set(hidden_positions(text))
+    return "".join(ch for i, ch in enumerate(text) if i not in drop) if drop else text
 
 TEXT_EXT = {".md", ".markdown", ".txt", ".yaml", ".yml", ".json", ".toml"}
 CODE_EXT = {".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".ps1", ".rb", ".php"}
@@ -179,6 +224,7 @@ class Finding:
     excerpt: str = ""
     step: str = ""          # step0 | step1 | step2
     fixed: bool = False
+    auto_fix: bool = False  # находку этого вида в этом файле исправляет --fix (скрытые символы, NFC, allowed-tools)
     suppressed: bool = False
     suppression_reason: str = ""
 
@@ -301,11 +347,10 @@ def step0_sanitize(root: Path, fix: bool, report: Report) -> Dict[Path, str]:
         text = raw
         if text.startswith("﻿"):           # легитимный BOM в начале файла
             text = text[1:]
+        utf8 = is_utf8(p)
         hits: Dict[int, List[int]] = {}
-        for i, ch in enumerate(text):
-            cp = ord(ch)
-            if cp in INVISIBLE:
-                hits.setdefault(cp, []).append(i)
+        for i in hidden_positions(text):
+            hits.setdefault(ord(text[i]), []).append(i)
         if hits:
             for cp, positions in hits.items():
                 ln, col = line_col(text, positions[0])
@@ -315,12 +360,12 @@ def step0_sanitize(root: Path, fix: bool, report: Report) -> Dict[Path, str]:
                     title=f"Невидимый символ U+{cp:04X} ({INVISIBLE[cp]}) ×{len(positions)}",
                     description=f"В файле обнаружено {len(positions)} вхождений U+{cp:04X}. "
                                 + ("Удалено при --fix." if can_fix else
-                                   "Файл не в UTF-8: --fix его не изменяет, исправьте вручную." if fix else
+                                   "Файл не в UTF-8: --fix его не изменяет, исправьте вручную." if not utf8 else
                                    "Запустите с --fix для автоочистки."),
                     file=rel(root, p), line=ln, column=col,
-                    excerpt=excerpt_at(text, positions[0]), step="step0", fixed=can_fix))
+                    excerpt=excerpt_at(text, positions[0]), step="step0", fixed=can_fix, auto_fix=utf8))
             if can_fix:
-                text = "".join(ch for ch in text if ord(ch) not in INVISIBLE)
+                text = strip_invisible(text)
         nfc = unicodedata.normalize("NFC", text)
         changed = (nfc != raw)
         if can_fix and changed:
@@ -332,8 +377,8 @@ def step0_sanitize(root: Path, fix: bool, report: Report) -> Dict[Path, str]:
                 rule_id="P-08", severity="LOW", confidence=0.5,
                 title="Текст не в NFC-нормальной форме",
                 description="Файл содержит символы не в форме NFC (возможны омоглифы). "
-                            + ("Файл не в UTF-8: --fix его не изменяет." if fix else "--fix нормализует."),
-                file=rel(root, p), step="step0"))
+                            + ("--fix нормализует." if utf8 else "Файл не в UTF-8: --fix его не изменяет."),
+                file=rel(root, p), step="step0", auto_fix=utf8))
         texts[p] = text if fix else text
         report.files_scanned += 1
     return texts
@@ -430,14 +475,17 @@ def step1_static(root: Path, texts: Dict[Path, str], fix: bool, report: Report) 
         tools_val = meta.get("allowed-tools", meta.get("allowed_tools", meta.get("permissions")))
         if tools_val is None or (isinstance(tools_val, (str, list)) and not tools_val):
             inferred = infer_tools_from_code(texts)
-            can_fix = fix and span != (0, 0) and is_utf8(manifest)
+            fixable = span != (0, 0) and is_utf8(manifest)
+            can_fix = fix and fixable
             f = Finding(
                 rule_id="LP3", severity="MEDIUM", confidence=1.0,
                 title="Не задекларирован allowed-tools (правило LP3)",
                 description="Навык обязан явно перечислить разрешенные инструменты. "
                             f"По коду определены: {', '.join(inferred)}. "
-                            f"{'Блок добавлен при --fix.' if can_fix else 'Запустите с --fix для автогенерации.'}",
-                file=report.manifest_path, line=1, step="step1", fixed=False)
+                            + ("Блок добавлен при --fix." if can_fix else
+                               "Запустите с --fix для автогенерации." if fixable else
+                               "В SKILL.md нет шапки между строками --- или файл не в UTF-8: добавьте блок вручную."),
+                file=report.manifest_path, line=1, step="step1", fixed=False, auto_fix=fixable)
             if can_fix:
                 fm_end_line_idx = mtext.rfind("---", 0, span[1])
                 new_text = mtext[:fm_end_line_idx] + f"allowed-tools: {', '.join(inferred)}\n" + mtext[fm_end_line_idx:]

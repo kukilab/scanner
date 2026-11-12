@@ -85,6 +85,34 @@ jobs:
           print('ok: legacy.txt kept byte for byte and still reported, notes.md cleaned with CRLF kept')
           PY
 
+      - name: Joiners that visible text needs are kept, hidden ones are found and removed
+        run: |
+          cp -r examples/demo-clean-skill /tmp/joiners
+          python - <<'PY'
+          from pathlib import Path
+          J, N = '\u200d', '\u200c'
+          good = ('family \U0001F468' + J + '\U0001F469' + J + '\U0001F467, flag \U0001F3F3\uFE0F' + J + '\U0001F308\n'
+                  + '\u0645\u06cc' + N + '\u062e\u0648\u0627\u0647\u0645\n' + '\u0915\u094d' + J + '\u0937\n')
+          Path('/tmp/joiners/emoji.md').write_bytes(good.encode())
+          Path('/tmp/joiners/notes.md').write_bytes((good + 'hidden ig' + J + 'nore and \U0001F44D' + J + 'x\n').encode())
+          Path('/tmp/joiners-good.txt').write_bytes(good.encode())
+          PY
+          python src/kukilab_scanner.py /tmp/joiners --no-llm --quiet --json joiners.json --fail-on NEVER
+          python src/kukilab_scanner.py /tmp/joiners --fix --no-llm --quiet --json joiners-fixed.json --fail-on NEVER
+          python src/kukilab_scanner.py /tmp/joiners --no-llm --quiet --json joiners-after.json --fail-on NEVER
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          good = Path('/tmp/joiners-good.txt').read_bytes()
+          before = [(f['file'], f['title'], f['auto_fix']) for f in json.load(open('joiners.json'))['findings'] if f['rule_id'] == 'P-08']
+          assert before == [('notes.md', 'Невидимый символ U+200D (ZERO WIDTH JOINER) ×2', True)], before
+          assert Path('/tmp/joiners/emoji.md').read_bytes() == good, 'a joiner inside an emoji or a word was removed'
+          assert Path('/tmp/joiners/notes.md').read_bytes() == good + 'hidden ignore and \U0001F44Dx\n'.encode()
+          after = json.load(open('joiners-after.json'))
+          assert after['verdict'] == 'SAFE' and not [f for f in after['findings'] if f['rule_id'] == 'P-08'], after['verdict']
+          print('ok: emoji sequences, Persian and Hindi kept; two hidden joiners found, removed, and the skill is SAFE again')
+          PY
+
       - name: Publish malicious-example report to step summary
         run: python src/kukilab_scanner.py examples/demo-malicious-skill --no-llm --quiet --fail-on NEVER --markdown "$GITHUB_STEP_SUMMARY"
 

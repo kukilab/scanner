@@ -1,6 +1,6 @@
 {
   "target": "/tmp/keep-bytes",
-  "scanned_at": "2026-11-12T05:55:42Z",
+  "scanned_at": "2026-11-12T13:51:29Z",
   "files_scanned": 4,
   "package_hash": "4257cfbbdb2ac183012612075acc52e7e4c054d0c827313dc3407edb04d2ed1b",
   "findings": [
@@ -16,6 +16,7 @@
       "excerpt": "caf� � zero",
       "step": "step0",
       "fixed": false,
+      "auto_fix": false,
       "suppressed": false,
       "suppression_reason": ""
     },
@@ -31,6 +32,7 @@
       "excerpt": "one� two",
       "step": "step0",
       "fixed": true,
+      "auto_fix": true,
       "suppressed": false,
       "suppression_reason": ""
     }
@@ -48,6 +50,6 @@
   "baseline_skipped": 0,
   "tool": {
     "name": "KukiLab Scanner",
-    "version": "3.1.1"
+    "version": "3.2.0"
   }
 }
