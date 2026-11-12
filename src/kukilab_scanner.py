@@ -38,11 +38,27 @@ except Exception:  # pragma: no cover
     yaml = None
 
 TOOL_NAME = "KukiLab Scanner"
-TOOL_VERSION = "3.1.1"
+TOOL_VERSION = "3.2.0"
 TOOL_URI = "https://github.com/kukilab/scanner"
 
 DEFAULT_MODEL = os.environ.get("KUKILAB_MODEL", "claude-haiku-5-5")
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+
+# Поставщики модели для Step 2. Запрос и разбор ответа у всех одинаковые, различается только HTTP-обёртка.
+# "compatible" — любой сервер с интерфейсом OpenAI Chat Completions (OpenRouter, Mistral, локальная модель):
+# его адрес задаётся через --base-url, модель — через --model.
+# Модель по умолчанию — лишь отправная точка: линейки поставщиков меняются, задавайте свою через --model.
+# Какие пары «поставщик + модель» дают бейдж SAFE, решает kukilab.dev (см. README, «Модели для бейджа SAFE»).
+PROVIDERS: Dict[str, Dict[str, object]] = {
+    "anthropic": {"label": "Anthropic", "env": ("ANTHROPIC_API_KEY",), "model": "claude-haiku-5-5", "url": ANTHROPIC_URL},
+    "openai": {"label": "OpenAI", "env": ("OPENAI_API_KEY",), "model": "gpt-6-luna",
+               "url": "https://api.openai.com/v1/chat/completions"},
+    "gemini": {"label": "Gemini", "env": ("GEMINI_API_KEY", "GOOGLE_API_KEY"), "model": "gemini-3.6-flash",
+               "url": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"},
+    # у совместимого сервера свой ключ: ключ OpenAI на чужой адрес не отправляется
+    "compatible": {"label": "OpenAI-compatible", "env": ("KUKILAB_LLM_API_KEY",), "model": "", "url": ""},
+}
+PROVIDER_ORDER = ("anthropic", "openai", "gemini")   # порядок выбора при --provider auto
 
 # ---------------------------------------------------------------------------
 # Таксономия угроз P-01..P-10 + локальные правила (LP3, AST7)
@@ -200,7 +216,7 @@ class Report:
     findings: List[Finding] = field(default_factory=list)
     risk_score: int = 0
     verdict: str = "SAFE"
-    llm_mode: str = "offline"       # offline | api
+    llm_mode: str = "offline"       # offline | api:<поставщик>:<модель>
     llm_summary: str = ""
     fixes_applied: List[str] = field(default_factory=list)
     manifest_path: str = ""
@@ -511,7 +527,7 @@ def _line_start_idx(text: str, lineno: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — Semantic pass (offline heuristics + optional LLM via Anthropic API)
+# Step 2 — Semantic pass (offline heuristics + optional LLM: Anthropic, OpenAI, Gemini, OpenAI-compatible)
 # ---------------------------------------------------------------------------
 
 
@@ -572,7 +588,89 @@ OUTPUT SCHEMA:
  "reasoning_summary": "<Summary>"}"""
 
 
-def step2_llm(root: Path, texts: Dict[Path, str], report: Report, model: str, api_key: str, timeout: int = 90) -> bool:
+def llm_mode(provider: str, model: str) -> str:
+    """Запись о смысловом проходе в отчёте: api:<поставщик>:<модель>."""
+    return f"api:{provider}:{model}"
+
+
+def llm_label(mode: str) -> str:
+    """«Anthropic API (claude-haiku-5-5)» из api:anthropic:claude-haiku-5-5; старый вид api:<модель> — это Anthropic."""
+    parts = mode.split(":", 2)
+    provider, model = (parts[1], parts[2]) if len(parts) == 3 and parts[1] in PROVIDERS else ("anthropic", mode.split(":", 1)[-1])
+    return f"{PROVIDERS[provider]['label']} API ({model})"
+
+
+def chat_url(base_url: str) -> str:
+    """Адрес Chat Completions по базовому адресу сервера: https://host/v1 -> https://host/v1/chat/completions."""
+    base = base_url.strip().rstrip("/")
+    return base if base.endswith("/chat/completions") else base + "/chat/completions"
+
+
+def llm_http(provider: str, model: str, api_key: str, system: str, user_msg: str, base_url: str = "") -> Tuple[str, dict, dict]:
+    """Адрес, заголовки и тело запроса к модели. Температура задаётся только там, где её ещё принимают:
+    новые модели OpenAI и Gemini её отвергают или не учитывают."""
+    agent = f"kukilab-scanner/{TOOL_VERSION}"
+    if provider == "anthropic":
+        return (ANTHROPIC_URL,
+                {"content-type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01", "user-agent": agent},
+                {"model": model, "max_tokens": 2048, "temperature": 0, "system": system,
+                 "messages": [{"role": "user", "content": user_msg}]})
+    if provider == "gemini":
+        return (str(PROVIDERS["gemini"]["url"]).format(model=model),
+                {"content-type": "application/json", "x-goog-api-key": api_key, "user-agent": agent},
+                {"systemInstruction": {"parts": [{"text": system}]},
+                 "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
+                 # с запасом: у моделей с размышлением оно входит в тот же лимит
+                 "generationConfig": {"maxOutputTokens": 8192, "responseMimeType": "application/json"}})
+    headers = {"content-type": "application/json", "user-agent": agent}
+    if api_key:
+        headers["authorization"] = "Bearer " + api_key
+    payload = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]}
+    if provider == "openai":
+        payload.update({"max_completion_tokens": 8192, "response_format": {"type": "json_object"}})
+        return str(PROVIDERS["openai"]["url"]), headers, payload
+    payload["max_tokens"] = 4096
+    return chat_url(base_url), headers, payload
+
+
+def llm_text(provider: str, data: dict) -> str:
+    """Текст ответа модели из JSON поставщика."""
+    try:
+        if provider == "anthropic":
+            return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
+        if provider == "gemini":
+            parts = data["candidates"][0]["content"].get("parts", [])
+            return "".join(part.get("text", "") for part in parts if not part.get("thought")).strip()
+        content = data["choices"][0]["message"].get("content") or ""
+        if isinstance(content, list):   # часть совместимых серверов отдаёт содержимое списком частей
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        return str(content).strip()
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return ""
+
+
+def pick_provider(wanted: str, base_url: str, env: Optional[Dict[str, str]] = None) -> Tuple[str, str]:
+    """Поставщик и его ключ. auto: совместимый сервер, если задан --base-url, иначе первый поставщик с ключом
+    (Anthropic, OpenAI, Gemini). Пустой поставщик — ключа нет, Step 2 идёт офлайн."""
+    env = os.environ if env is None else env
+
+    def key_of(name: str) -> str:
+        return next((env[v].strip() for v in PROVIDERS[name]["env"] if env.get(v, "").strip()), "")   # type: ignore[union-attr]
+
+    if wanted in ("", "auto"):
+        if base_url:
+            return "compatible", key_of("compatible")
+        for name in PROVIDER_ORDER:
+            if key_of(name):
+                return name, key_of(name)
+        return "", ""
+    if wanted == "compatible":
+        return ("compatible", key_of("compatible")) if base_url else ("", "")   # локальному серверу ключ не обязателен
+    return (wanted, key_of(wanted)) if key_of(wanted) else ("", "")
+
+
+def step2_llm(root: Path, texts: Dict[Path, str], report: Report, model: str, api_key: str, timeout: int = 90,
+              provider: str = "anthropic", base_url: str = "") -> bool:
     files = prose_files(root, texts)
     if not files:
         return False
@@ -588,32 +686,27 @@ def step2_llm(root: Path, texts: Dict[Path, str], report: Report, model: str, ap
         if budget <= 0:
             break
     user_msg = "Audit the following skill documentation. Return JSON only.\n\n" + "\n\n".join(parts)
-    payload = {
-        "model": model,
-        "max_tokens": 2048,
-        "temperature": 0,
-        "system": LLM_SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": user_msg}],
-    }
-    req = urllib.request.Request(
-        ANTHROPIC_URL, data=json.dumps(payload).encode("utf-8"), method="POST",
-        headers={"content-type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01",
-                 "user-agent": f"kukilab-scanner/{TOOL_VERSION}"})
+    name = PROVIDERS[provider]["label"]
+    url, headers, payload = llm_http(provider, model, api_key, LLM_SYSTEM_PROMPT, user_msg, base_url)
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        log(f"[step2] Anthropic API HTTP {e.code}: {e.read()[:300]!r} — переключаюсь в офлайн-режим")
+        log(f"[step2] {name} API HTTP {e.code}: {e.read()[:300]!r} — переключаюсь в офлайн-режим")
         return False
     except Exception as e:  # network etc.
-        log(f"[step2] Anthropic API недоступен ({e}) — переключаюсь в офлайн-режим")
+        log(f"[step2] {name} API недоступен ({e}) — переключаюсь в офлайн-режим")
         return False
-    text = "".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text").strip()
+    text = llm_text(provider, data) if isinstance(data, dict) else ""
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
         log("[step2] LLM вернул невалидный JSON — результат отброшен, офлайн-режим")
+        return False
+    if not isinstance(parsed, dict):
+        log("[step2] LLM вернул JSON не той формы — результат отброшен, офлайн-режим")
         return False
     report.llm_summary = str(parsed.get("reasoning_summary", ""))[:1000]
     name_to_path = {rel(root, p): (p, t) for p, t in files.items()}
@@ -773,7 +866,7 @@ def render_markdown(report: Report) -> str:
              f"**SHA-256 пакета:** `{report.package_hash[:16]}…`  ",
              f"**Манифест:** `{report.manifest_path or '— не найден —'}`  ",
              f"**allowed-tools:** `{report.allowed_tools or '— не задекларирован —'}`  ",
-             f"**Step 2:** {'Anthropic API (' + report.llm_mode.split(':', 1)[-1] + ')' if report.llm_mode.startswith('api') else 'офлайн-эвристики'}  ",
+             f"**Step 2:** {llm_label(report.llm_mode) if report.llm_mode.startswith('api:') else 'офлайн-эвристики'}  ",
              f"**Risk score:** {report.risk_score}/100  ",
              "",
              f"## Вердикт: {VERDICT_LABEL[report.verdict]}",
@@ -925,8 +1018,16 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--json", metavar="FILE", help="Записать полный отчет в JSON")
     ap.add_argument("--markdown", metavar="FILE", help="Записать Markdown-отчет в файл (напр. $GITHUB_STEP_SUMMARY)")
     ap.add_argument("--quiet", action="store_true", help="Не печатать Markdown-отчет в stdout")
-    ap.add_argument("--no-llm", action="store_true", help="Пропустить вызов Anthropic API (только офлайн-эвристики Step 2)")
-    ap.add_argument("--model", default=DEFAULT_MODEL, help=f"Модель для Step 2 (по умолчанию {DEFAULT_MODEL}; env KUKILAB_MODEL)")
+    ap.add_argument("--no-llm", action="store_true", help="Не обращаться к модели (только офлайн-эвристики Step 2)")
+    ap.add_argument("--provider", choices=["auto", *PROVIDERS], default=os.environ.get("KUKILAB_PROVIDER", "auto"),
+                    help="Поставщик модели для Step 2. auto (по умолчанию): первый, чей ключ задан — ANTHROPIC_API_KEY, "
+                         "OPENAI_API_KEY, GEMINI_API_KEY; с --base-url — compatible. env KUKILAB_PROVIDER")
+    ap.add_argument("--model", default=os.environ.get("KUKILAB_MODEL", ""),
+                    help="Модель для Step 2 (по умолчанию — модель поставщика: "
+                         + ", ".join(f"{n}: {PROVIDERS[n]['model']}" for n in PROVIDER_ORDER) + "; env KUKILAB_MODEL)")
+    ap.add_argument("--base-url", default=os.environ.get("KUKILAB_BASE_URL", ""), metavar="URL",
+                    help="Адрес сервера с интерфейсом OpenAI Chat Completions, напр. https://openrouter.ai/api/v1 или "
+                         "http://localhost:11434/v1 (поставщик compatible; ключ — KUKILAB_LLM_API_KEY; нужен --model). env KUKILAB_BASE_URL")
     ap.add_argument("--fail-on", choices=["BLOCK", "CAUTION", "NEVER"], default="BLOCK",
                     help="При каком вердикте возвращать ненулевой код (по умолчанию BLOCK)")
     ap.add_argument("--cache", metavar="FILE", help="JSON-файл кэша SHA-256 проверенных пакетов (пропуск неизмененных)")
@@ -967,16 +1068,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         step1_static(root, texts, args.fix, report)
         log("[step2] Semantic pass…")
         step2_offline(root, texts, report)
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        if api_key and not args.no_llm:
-            if step2_llm(root, texts, report, args.model, api_key):
-                report.llm_mode = f"api:{args.model}"
+        base_url = args.base_url.strip()
+        provider, api_key = ("", "") if args.no_llm else pick_provider(args.provider, base_url)
+        model = args.model.strip() or (str(PROVIDERS[provider]["model"]) if provider else "")
+        if provider and model:
+            if step2_llm(root, texts, report, model, api_key, provider=provider, base_url=base_url):
+                report.llm_mode = llm_mode(provider, model)
             else:
                 report.llm_mode = "offline (api failed)"
         else:
             report.llm_mode = "offline"
-            if not api_key and not args.no_llm:
-                log("[step2] ANTHROPIC_API_KEY не задан — Step 2 выполнен в офлайн-режиме (эвристики)")
+            if provider and not model:
+                log("[step2] Для --base-url нужна модель (--model) — Step 2 выполнен в офлайн-режиме (эвристики)")
+            elif not args.no_llm:
+                log("[step2] Ключ модели не задан (ANTHROPIC_API_KEY, OPENAI_API_KEY или GEMINI_API_KEY) — "
+                    "Step 2 выполнен в офлайн-режиме (эвристики)")
         rules = load_suppressions(root)
         if args.baseline and not args.no_baseline:
             n_sup = apply_suppressions(report, rules)

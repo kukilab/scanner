@@ -1,6 +1,6 @@
 # KukiLab SAFE — reusable workflow.
 #
-# Runs the full engine (Step 0, Step 1 and Step 2 through the Anthropic API) on a skill and, when the verdict is
+# Runs the full engine (Step 0, Step 1 and Step 2 through the API of Anthropic, OpenAI or Gemini) on a skill and, when the verdict is
 # SAFE, tells kukilab.dev so that the skill's badge turns from STATIC PASSED to SAFE for this commit.
 #
 # In the skill's repository:
@@ -19,6 +19,11 @@
 #         path: my-skill            # folder with SKILL.md; "." for a skill in the repository root
 #       secrets:
 #         anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+#         # or: openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+#         # or: gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
+#
+# One key is enough. kukilab.dev gives SAFE only for models that passed its test set (the list: README,
+# "Models for the SAFE badge"); with another model the scan still runs and the badge stays STATIC PASSED.
 #
 # Why a reusable workflow and not just the action: the token GitHub signs for this job names this very file
 # (job_workflow_ref). kukilab.dev accepts a result only with that proof, so a result cannot be made up by
@@ -33,9 +38,23 @@ on:
         description: "Folder of the skill (with SKILL.md), relative to the repository root."
         type: string
         default: "."
+      provider:
+        description: "Model provider for Step 2: auto (the first one whose key is given), anthropic, openai or gemini."
+        type: string
+        default: "auto"
+      model:
+        description: "Model for Step 2. Empty: the provider's default model."
+        type: string
+        default: ""
     secrets:
       anthropic-api-key:
-        description: "Anthropic API key for Step 2. Without it the scan runs offline and the badge stays STATIC PASSED."
+        description: "Anthropic API key for Step 2. Without a key of any provider the scan runs offline and the badge stays STATIC PASSED."
+        required: false
+      openai-api-key:
+        description: "OpenAI API key for Step 2."
+        required: false
+      gemini-api-key:
+        description: "Gemini API key for Step 2."
         required: false
     outputs:
       verdict:
@@ -54,7 +73,7 @@ jobs:
     name: KukiLab Step 0 / 1 / 2 and SAFE badge
     runs-on: ubuntu-latest
     env:
-      HAS_KEY: ${{ secrets.anthropic-api-key != '' }}
+      HAS_KEY: ${{ secrets.anthropic-api-key != '' || secrets.openai-api-key != '' || secrets.gemini-api-key != '' }}
     outputs:
       verdict: ${{ steps.scan.outputs.verdict }}
       badge: ${{ steps.attest.outputs.badge }}
@@ -71,13 +90,17 @@ jobs:
           sarif: ${{ runner.temp }}/kukilab.sarif
           json: ${{ runner.temp }}/kukilab.json
           markdown: ${{ runner.temp }}/kukilab-report.md
+          provider: ${{ inputs.provider }}
+          model: ${{ inputs.model }}
           anthropic-api-key: ${{ secrets.anthropic-api-key }}
+          openai-api-key: ${{ secrets.openai-api-key }}
+          gemini-api-key: ${{ secrets.gemini-api-key }}
 
       - name: No API key, no SAFE badge
         if: env.HAS_KEY != 'true'
         run: |
-          echo "::notice title=KukiLab SAFE needs an API key::The secret with the Anthropic API key is not set, so Step 2 ran offline. The badge stays STATIC PASSED."
-          printf '\n### KukiLab badge: not updated\n\nThe Anthropic API key is not set, so the semantic pass (Step 2) ran offline. Add the secret and run the workflow again to get SAFE.\n' >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=KukiLab SAFE needs an API key::No model key is set (Anthropic, OpenAI or Gemini), so Step 2 ran offline. The badge stays STATIC PASSED."
+          printf '\n### KukiLab badge: not updated\n\nNo model key is set (Anthropic, OpenAI or Gemini), so the semantic pass (Step 2) ran offline. Add one of the secrets and run the workflow again to get SAFE.\n' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report SAFE to kukilab.dev
         id: attest
@@ -119,6 +142,10 @@ jobs:
             if accepted:
               summary.write("\n### KukiLab badge: SAFE\n\nkukilab.dev accepted the result for commit `%s`.\n\n![KukiLab](%s)\n"
                             % (answer["commit"][:7], answer["badge"]))
+            elif reason == "model_not_approved":
+              summary.write("\n### KukiLab badge: not updated\n\nStep 2 ran with `%s`. kukilab.dev gives SAFE only for models that passed "
+                            "its test set: %s. The scan result above stands; the badge stays STATIC PASSED.\n"
+                            % (body["llm_mode"], ", ".join(answer.get("approved", [])) or "see the README of kukilab/scanner"))
             else:
               summary.write("\n### KukiLab badge: not updated\n\nkukilab.dev did not accept the result: `%s`.\n" % reason)
           print("kukilab.dev:", status, json.dumps(answer))

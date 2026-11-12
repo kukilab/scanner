@@ -3,7 +3,8 @@
 #
 #  КУДА ПОЛОЖИТЬ: в репозиторий ПРОВЕРЯЕМОГО НАВЫКА по пути
 #      .github/workflows/kukilab-scan.yml
-#  СЕКРЕТ (опционально): ANTHROPIC_API_KEY → Settings → Secrets and variables → Actions
+#  СЕКРЕТ (опционально): ключ модели → Settings → Secrets and variables → Actions.
+#  Подходит ANTHROPIC_API_KEY, OPENAI_API_KEY или GEMINI_API_KEY (достаточно одного).
 #  Без ключа Step 2 работает в офлайн-режиме (эвристики P-01/P-02/P-09, en/ru/de).
 # ─────────────────────────────────────────────────────────────────────────────
 name: KukiLab Scanner
@@ -35,6 +36,8 @@ jobs:
           path: .
           fail-on: BLOCK
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          # gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload SARIF to GitHub Code Scanning
         if: always()

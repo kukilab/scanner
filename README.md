@@ -7,7 +7,7 @@
 
 **KukiLab** — гибридный сканер безопасности AI-навыков (Claude Code Skills, Codex, MCP), который не только находит проблемы, но и доводит навык до состояния **SAFE**: `--fix` чистит Unicode-стеганографию и дописывает декларацию `allowed-tools`, SARIF-отчёт попадает в GitHub Security, а CI-гейт останавливает опасный PR.
 
-Три этапа: **Step 0** активная очистка Unicode (zero-width, BIDI, BOM, NFC) → **Step 1** статическая проверка манифеста и кода без штрафа за объём и без шума на кириллице (AE4) → **Step 2** семантический анализ прозы (офлайн-эвристики en/ru/de или Claude через API). Вердикты `SAFE / CAUTION / BLOCK`.
+Три этапа: **Step 0** активная очистка Unicode (zero-width, BIDI, BOM, NFC) → **Step 1** статическая проверка манифеста и кода без штрафа за объём и без шума на кириллице (AE4) → **Step 2** семантический анализ прозы (офлайн-эвристики en/ru/de или модель через API: Anthropic, OpenAI, Gemini, любой совместимый сервер). Вердикты `SAFE / CAUTION / BLOCK`.
 
 ## Быстрый старт
 
@@ -18,6 +18,25 @@ python src/kukilab_scanner.py /path/to/skill                     # отчёт в
 python src/kukilab_scanner.py /path/to/skill --fix               # очистка + allowed-tools
 python src/kukilab_scanner.py /path/to/skill --sarif results.sarif --json results.json
 ```
+
+## Модель для Step 2
+
+Без ключа Step 2 работает офлайн, на эвристиках. С ключом прозу навыка читает модель. Поставщик выбирается по тому, чей ключ задан в окружении, или явно через `--provider`:
+
+| Поставщик | Ключ | Модель по умолчанию |
+|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-5-5` |
+| OpenAI | `OPENAI_API_KEY` | `gpt-6-luna` |
+| Gemini | `GEMINI_API_KEY` | `gemini-3.6-flash` |
+| Совместимый сервер (OpenRouter, Mistral, локальная модель) | `KUKILAB_LLM_API_KEY`, если серверу нужен ключ | задаётся через `--model` |
+
+```bash
+OPENAI_API_KEY=... python src/kukilab_scanner.py /path/to/skill                      # поставщик по ключу
+GEMINI_API_KEY=... python src/kukilab_scanner.py /path/to/skill --model gemini-3.6-flash
+python src/kukilab_scanner.py /path/to/skill --base-url http://localhost:11434/v1 --model llama3.3   # локальная модель
+```
+
+Линейки моделей у поставщиков меняются: если модель по умолчанию снята, задайте свою через `--model`. Ключ уходит только своему поставщику; в отчёте записано, какая модель делала проход (`api:<поставщик>:<модель>`). Текст навыка для модели — недоверенный ввод, и слабую модель проще уговорить ответить «всё чисто», поэтому для бейджа SAFE подходят не все модели (см. ниже).
 
 ## Скилл для агента
 
@@ -36,7 +55,7 @@ npx skills add kukilab/scanner --skill kukilab-scan
   with:
     path: .
     fail-on: BLOCK                      # BLOCK | CAUTION | NEVER
-    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # опционально
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # опционально; или openai-api-key, gemini-api-key
 ```
 
 Полный workflow с загрузкой SARIF в Security → Code scanning: [`templates/kukilab-scan.yml`](templates/kukilab-scan.yml). Пошаговое развертывание: [`DEPLOY.md`](DEPLOY.md).
@@ -45,8 +64,10 @@ npx skills add kukilab/scanner --skill kukilab-scan
 
 Живой бейдж навыка отдаёт [kukilab.dev](https://kukilab.dev): вставьте ссылку на навык в «Проверить по ссылке» и скопируйте строку из блока «Бейдж для README».
 
-- **STATIC PASSED** — статическая проверка на сайте пройдена (Step 0, Step 1, офлайн-эвристики Step 2). Ключ API не нужен.
-- **SAFE** — пройден и смысловой проход Step 2. Его запускает готовый рабочий процесс в репозитории навыка, с вашим ключом API Anthropic:
+- **STATIC PASSED** — статическая проверка пройдена (Step 0, Step 1, офлайн-эвристики Step 2).
+- **SAFE** — пройден и смысловой проход Step 2.
+
+Получить SAFE можно двумя путями. Первый — проверка на сайте: для публичных репозиториев kukilab.dev сам выполняет Step 2, бесплатно и без ключа, в пределах дневного лимита. Это разовая проверка одного коммита. Второй — готовый рабочий процесс в репозитории навыка: он перепроверяет навык при каждом коммите, с вашим ключом модели (Anthropic, OpenAI или Gemini — достаточно одного):
 
 ```yaml
 # .github/workflows/kukilab-safe.yml
@@ -64,9 +85,17 @@ jobs:
       path: my-skill          # папка с SKILL.md; "." для навыка в корне
     secrets:
       anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      # или: openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+      # или: gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
 ```
 
-Рабочий процесс сообщает результат на kukilab.dev вместе с токеном, который подписывает GitHub: он подтверждает репозиторий, коммит и то, что выполнялся именно этот файл. Сервис сам пересчитывает статическую часть на том же коммите. SAFE действует для проверенного коммита: после нового коммита бейдж показывает STATIC PASSED, пока рабочий процесс не отработает снова. Ключ API на kukilab.dev не передаётся.
+Рабочий процесс сообщает результат на kukilab.dev вместе с токеном, который подписывает GitHub: он подтверждает репозиторий, коммит и то, что выполнялся именно этот файл. Сервис сам пересчитывает статическую часть на том же коммите. SAFE действует для проверенного коммита: после нового коммита бейдж показывает STATIC PASSED, пока рабочий процесс не отработает снова. Ключ хранится в секретах вашего репозитория на GitHub и на kukilab.dev не передаётся: запрос к модели уходит из GitHub напрямую поставщику.
+
+### Модели для бейджа SAFE
+
+kukilab.dev выдаёт SAFE только за проход моделью, которая прошла тестовый набор сканера: [`tests/semantic`](tests/semantic) — документы на английском, русском и немецком с переопределением инструкций, скрытыми командами, выносом данных и обращением к самому аудитору, плюс чистые документы, которые нельзя помечать. Проверка модели — `python tools/model_check.py --provider … --model …` или рабочий процесс **Model check** во вкладке Actions.
+
+Действующий список отдаёт сервис: `https://kukilab.dev/api`, поле `badge_models`. С моделью не из списка сканирование проходит как обычно, отчёт и SARIF остаются, но бейдж остаётся STATIC PASSED. Чтобы добавить модель, пришлите результат прогона Model check в [issues](https://github.com/kukilab/scanner/issues).
 
 ## Таксономия
 

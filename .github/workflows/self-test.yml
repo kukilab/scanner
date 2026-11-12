@@ -37,6 +37,9 @@ jobs:
           python src/kukilab_scanner.py /tmp/self-suppress --no-llm --quiet --json sup.json --fail-on NEVER
           python -c "import json;d=json.load(open('sup.json'));assert d['verdict']=='BLOCK',d['verdict'];assert not any(f.get('suppressed') for f in d['findings']);assert d['baseline_skipped']>0;print('ok: suppressions ignored without --baseline')"
 
+      - name: Step 2 providers (Anthropic, OpenAI, Gemini, compatible) without the network
+        run: python tests/test_providers.py
+
       - name: SARIF is valid JSON with 2.1.0 schema
         run: python -c "import json;s=json.load(open('mal.sarif'));assert s['version']=='2.1.0' and s['runs'][0]['results'];print('ok',len(s['runs'][0]['results']),'results')"
 

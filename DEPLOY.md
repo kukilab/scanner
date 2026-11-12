@@ -41,10 +41,10 @@ python src/kukilab_scanner.py examples/demo-malicious-skill   # → BLOCK, exit 
 ```bash
 python src/kukilab_scanner.py /путь/к/навыку --sarif results.sarif --json results.json
 python src/kukilab_scanner.py /путь/к/навыку --fix          # очистка Unicode + allowed-tools
-ANTHROPIC_API_KEY=sk-ant-... python src/kukilab_scanner.py /путь/к/навыку   # Step 2 через API
+ANTHROPIC_API_KEY=sk-ant-... python src/kukilab_scanner.py /путь/к/навыку   # Step 2 через API (или OPENAI_API_KEY, GEMINI_API_KEY)
 ```
 
-Ключи CLI: `--fix`, `--sarif FILE`, `--json FILE`, `--markdown FILE`, `--quiet`, `--no-llm`, `--model`, `--fail-on BLOCK|CAUTION|NEVER`, `--cache FILE` (пропуск неизмененных пакетов по SHA-256), `--force`, `--baseline` (применить подавления из проверяемого репозитория; по умолчанию они не применяются).
+Ключи CLI: `--fix`, `--sarif FILE`, `--json FILE`, `--markdown FILE`, `--quiet`, `--no-llm`, `--provider`, `--model`, `--base-url`, `--fail-on BLOCK|CAUTION|NEVER`, `--cache FILE` (пропуск неизмененных пакетов по SHA-256), `--force`, `--baseline` (применить подавления из проверяемого репозитория; по умолчанию они не применяются).
 
 ---
 
@@ -75,7 +75,7 @@ scanner/
 ## C. Репозиторий проверяемого навыка (каждый)
 
 1. Скопировать `templates/kukilab-scan.yml` в проверяемый репозиторий как **`.github/workflows/kukilab-scan.yml`** — он уже ссылается на `kukilab/scanner@v1`, править ничего не нужно.
-2. (Опционально, для настоящего LLM-пасса) **Settings → Secrets and variables → Actions → New repository secret**: имя `ANTHROPIC_API_KEY`. Без ключа Step 2 работает на офлайн-эвристиках и сборка не падает.
+2. (Опционально, для настоящего LLM-пасса) **Settings → Secrets and variables → Actions → New repository secret**: имя `ANTHROPIC_API_KEY` (или `OPENAI_API_KEY`, `GEMINI_API_KEY` — тогда в шаге сканера замените вход на `openai-api-key` или `gemini-api-key`). Без ключа Step 2 работает на офлайн-эвристиках и сборка не падает.
 3. **Settings → Code security → Code scanning** — убедиться, что включено (на публичных репозиториях включено по умолчанию; на приватных нужен GitHub Advanced Security — тогда шаг upload-sarif можно убрать, отчёт всё равно будет в Summary и артефакте).
 4. Чтобы PR блокировался при вердикте BLOCK: **Settings → Branches → Branch protection rule** для `main` → *Require status checks to pass* → выбрать `KukiLab Step 0 / 1 / 2`.
 

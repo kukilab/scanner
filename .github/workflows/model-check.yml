@@ -1,0 +1,42 @@
+# Проверка модели для Step 2 на тестовом наборе tests/semantic. Запускается вручную.
+# Ключи — секреты этого репозитория: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY (нужен только ключ выбранного поставщика).
+# Модель попадает в список kukilab.dev для бейджа SAFE только после зелёного прогона.
+name: Model check
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Поставщик модели"
+        type: choice
+        options: [anthropic, openai, gemini]
+        default: anthropic
+      model:
+        description: "Модель (пусто — модель поставщика по умолчанию)"
+        type: string
+        default: ""
+      runs:
+        description: "Сколько раз прогнать каждый случай"
+        type: string
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  model-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run the semantic test set
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PROVIDER: ${{ inputs.provider }}
+          MODEL: ${{ inputs.model }}
+          RUNS: ${{ inputs.runs }}
+        run: python tools/model_check.py --provider "$PROVIDER" --model "$MODEL" --runs "$RUNS" --markdown "$GITHUB_STEP_SUMMARY"

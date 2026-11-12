@@ -27,19 +27,39 @@ inputs:
     required: false
     default: "kukilab-report.md"
   no-llm:
-    description: "Set to 'true' to skip the Anthropic API call in Step 2 (offline heuristics only)."
+    description: "Set to 'true' to skip the model call in Step 2 (offline heuristics only)."
     required: false
     default: "false"
-  model:
-    description: "Model for Step 2 when ANTHROPIC_API_KEY is provided."
+  provider:
+    description: "Model provider for Step 2: auto (the first one whose key is given: Anthropic, OpenAI, Gemini), anthropic, openai, gemini or compatible."
     required: false
-    default: "claude-haiku-5-5"
+    default: "auto"
+  model:
+    description: "Model for Step 2. Empty: the provider's default model."
+    required: false
+    default: ""
   extra-args:
     description: "Any additional CLI arguments (e.g. --baseline --cache .kukilab_cache.json). Suppression files in the scanned repository are ignored unless --baseline is passed."
     required: false
     default: ""
   anthropic-api-key:
-    description: "Anthropic API key for Step 2. Omit to run Step 2 offline."
+    description: "Anthropic API key for Step 2. With no key of any provider Step 2 runs offline."
+    required: false
+    default: ""
+  openai-api-key:
+    description: "OpenAI API key for Step 2."
+    required: false
+    default: ""
+  gemini-api-key:
+    description: "Gemini API key for Step 2."
+    required: false
+    default: ""
+  base-url:
+    description: "Base address of a server with the OpenAI Chat Completions interface (provider compatible), e.g. https://openrouter.ai/api/v1. Needs model."
+    required: false
+    default: ""
+  llm-api-key:
+    description: "Key for the server given in base-url, if it needs one."
     required: false
     default: ""
 
@@ -71,13 +91,19 @@ runs:
       shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
+        KUKILAB_LLM_API_KEY: ${{ inputs.llm-api-key }}
+        KUKILAB_PROVIDER: ${{ inputs.provider }}
+        KUKILAB_MODEL: ${{ inputs.model }}
+        KUKILAB_BASE_URL: ${{ inputs.base-url }}
       run: |
         set +e
         NOLLM=""
         if [ "${{ inputs.no-llm }}" = "true" ]; then NOLLM="--no-llm"; fi
         python "${{ github.action_path }}/src/kukilab_scanner.py" "${{ inputs.path }}" \
           --sarif "${{ inputs.sarif }}" --json "${{ inputs.json }}" --markdown "${{ inputs.markdown }}" \
-          --quiet --fail-on "${{ inputs.fail-on }}" --model "${{ inputs.model }}" $NOLLM ${{ inputs.extra-args }}
+          --quiet --fail-on "${{ inputs.fail-on }}" $NOLLM ${{ inputs.extra-args }}
         CODE=$?
         set -e
         VERDICT=$(python -c "import json;print(json.load(open('${{ inputs.json }}'))['verdict'])")
