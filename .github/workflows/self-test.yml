@@ -62,6 +62,29 @@ jobs:
           python src/kukilab_scanner.py /tmp/env-copy --no-llm --quiet --json envsend.json --fail-on NEVER
           test "$(python -c "import json;print(json.load(open('envsend.json'))['verdict'])")" = "BLOCK"
 
+      - name: --fix leaves a file that is not UTF-8 untouched and keeps line endings
+        run: |
+          cp -r examples/demo-clean-skill /tmp/keep-bytes
+          python - <<'PY'
+          from pathlib import Path
+          d = Path('/tmp/keep-bytes')
+          (d / 'legacy.txt').write_bytes(b'caf\xe9 \xe2\x80\x8b zero\r\n')
+          (d / 'notes.md').write_bytes(b'one\xe2\x80\x8b two\r\nlast line')
+          PY
+          python src/kukilab_scanner.py /tmp/keep-bytes --fix --no-llm --quiet --json keep.json --fail-on NEVER
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = Path('/tmp/keep-bytes')
+          assert (d / 'legacy.txt').read_bytes() == b'caf\xe9 \xe2\x80\x8b zero\r\n', 'a file that is not UTF-8 was rewritten'
+          assert (d / 'notes.md').read_bytes() == b'one two\r\nlast line', (d / 'notes.md').read_bytes()
+          r = json.load(open('keep.json'))
+          state = {f['file']: f['fixed'] for f in r['findings'] if f['rule_id'] == 'P-08'}
+          assert state == {'legacy.txt': False, 'notes.md': True}, state
+          assert r['verdict'] == 'CAUTION', r['verdict']
+          print('ok: legacy.txt kept byte for byte and still reported, notes.md cleaned with CRLF kept')
+          PY
+
       - name: Publish malicious-example report to step summary
         run: python src/kukilab_scanner.py examples/demo-malicious-skill --no-llm --quiet --fail-on NEVER --markdown "$GITHUB_STEP_SUMMARY"
 

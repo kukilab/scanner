@@ -38,7 +38,7 @@ except Exception:  # pragma: no cover
     yaml = None
 
 TOOL_NAME = "KukiLab Scanner"
-TOOL_VERSION = "3.1.0"
+TOOL_VERSION = "3.1.1"
 TOOL_URI = "https://github.com/kukilab/scanner"
 
 DEFAULT_MODEL = os.environ.get("KUKILAB_MODEL", "claude-haiku-5-5")
@@ -246,6 +246,20 @@ def read_text(p: Path) -> str:
         return data.decode("utf-8", errors="replace")
 
 
+def is_utf8(p: Path) -> bool:
+    """--fix переписывает только файлы в корректном UTF-8: иначе запись испортила бы исходные байты."""
+    try:
+        p.read_bytes().decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def write_exact(p: Path, text: str) -> None:
+    """Запись без перевода концов строк: CRLF остается CRLF на любой системе."""
+    p.write_bytes(text.encode("utf-8"))
+
+
 def line_col(text: str, idx: int) -> Tuple[int, int]:
     line = text.count("\n", 0, idx) + 1
     col = idx - (text.rfind("\n", 0, idx) + 1) + 1
@@ -283,6 +297,7 @@ def step0_sanitize(root: Path, fix: bool, report: Report) -> Dict[Path, str]:
     texts: Dict[Path, str] = {}
     for p in iter_files(root):
         raw = read_text(p)
+        can_fix = fix and is_utf8(p)
         text = raw
         if text.startswith("﻿"):           # легитимный BOM в начале файла
             text = text[1:]
@@ -299,22 +314,25 @@ def step0_sanitize(root: Path, fix: bool, report: Report) -> Dict[Path, str]:
                     rule_id="P-08", severity=sev, confidence=0.9,
                     title=f"Невидимый символ U+{cp:04X} ({INVISIBLE[cp]}) ×{len(positions)}",
                     description=f"В файле обнаружено {len(positions)} вхождений U+{cp:04X}. "
-                                f"{'Удалено при --fix.' if fix else 'Запустите с --fix для автоочистки.'}",
+                                + ("Удалено при --fix." if can_fix else
+                                   "Файл не в UTF-8: --fix его не изменяет, исправьте вручную." if fix else
+                                   "Запустите с --fix для автоочистки."),
                     file=rel(root, p), line=ln, column=col,
-                    excerpt=excerpt_at(text, positions[0]), step="step0", fixed=fix))
-            if fix:
+                    excerpt=excerpt_at(text, positions[0]), step="step0", fixed=can_fix))
+            if can_fix:
                 text = "".join(ch for ch in text if ord(ch) not in INVISIBLE)
         nfc = unicodedata.normalize("NFC", text)
         changed = (nfc != raw)
-        if fix and changed:
-            p.write_text(nfc, encoding="utf-8")
+        if can_fix and changed:
+            write_exact(p, nfc)
             report.fixes_applied.append(f"Step 0: очищен и NFC-нормализован {rel(root, p)}")
             text = nfc
-        elif not fix and nfc != text:
+        elif not can_fix and nfc != text:
             report.findings.append(Finding(
                 rule_id="P-08", severity="LOW", confidence=0.5,
                 title="Текст не в NFC-нормальной форме",
-                description="Файл содержит символы не в форме NFC (возможны омоглифы). --fix нормализует.",
+                description="Файл содержит символы не в форме NFC (возможны омоглифы). "
+                            + ("Файл не в UTF-8: --fix его не изменяет." if fix else "--fix нормализует."),
                 file=rel(root, p), step="step0"))
         texts[p] = text if fix else text
         report.files_scanned += 1
@@ -412,17 +430,18 @@ def step1_static(root: Path, texts: Dict[Path, str], fix: bool, report: Report) 
         tools_val = meta.get("allowed-tools", meta.get("allowed_tools", meta.get("permissions")))
         if tools_val is None or (isinstance(tools_val, (str, list)) and not tools_val):
             inferred = infer_tools_from_code(texts)
+            can_fix = fix and span != (0, 0) and is_utf8(manifest)
             f = Finding(
                 rule_id="LP3", severity="MEDIUM", confidence=1.0,
                 title="Не задекларирован allowed-tools (правило LP3)",
                 description="Навык обязан явно перечислить разрешенные инструменты. "
                             f"По коду определены: {', '.join(inferred)}. "
-                            f"{'Блок добавлен при --fix.' if fix and span != (0, 0) else 'Запустите с --fix для автогенерации.'}",
+                            f"{'Блок добавлен при --fix.' if can_fix else 'Запустите с --fix для автогенерации.'}",
                 file=report.manifest_path, line=1, step="step1", fixed=False)
-            if fix and span != (0, 0):
+            if can_fix:
                 fm_end_line_idx = mtext.rfind("---", 0, span[1])
                 new_text = mtext[:fm_end_line_idx] + f"allowed-tools: {', '.join(inferred)}\n" + mtext[fm_end_line_idx:]
-                manifest.write_text(new_text, encoding="utf-8")
+                write_exact(manifest, new_text)
                 texts[manifest] = new_text
                 report.fixes_applied.append(f"Step 1: добавлен allowed-tools: {', '.join(inferred)} в {report.manifest_path}")
                 report.allowed_tools = ", ".join(inferred)
