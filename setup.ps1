@@ -13,5 +13,6 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 Write-Host ""; Write-Host "=== ✅ Setup Completed Successfully! ===" -ForegroundColor Green; Write-Host ""
 Write-Host "To activate the environment in PowerShell, run:" -ForegroundColor Cyan; Write-Host "    .\venv\Scripts\Activate.ps1" -ForegroundColor White; Write-Host ""
-Write-Host "To run the scanner:" -ForegroundColor Cyan; Write-Host "    python src/kukilab_scanner.py \path\to\target-skill" -ForegroundColor White
-Write-Host "To run with auto-fix:" -ForegroundColor Cyan; Write-Host "    python src/kukilab_scanner.py \path\to\target-skill --fix" -ForegroundColor White; Write-Host ""
+Write-Host "To check the installation on the bundled demo skill:" -ForegroundColor Cyan; Write-Host "    python src/kukilab_scanner.py examples/demo-clean-skill" -ForegroundColor White; Write-Host ""
+Write-Host "To scan your own skill, replace C:\my-skill with the folder that holds its SKILL.md:" -ForegroundColor Cyan; Write-Host "    python src/kukilab_scanner.py C:\my-skill" -ForegroundColor White
+Write-Host "The same with auto-fix (changes the skill's files):" -ForegroundColor Cyan; Write-Host "    python src/kukilab_scanner.py C:\my-skill --fix" -ForegroundColor White; Write-Host ""

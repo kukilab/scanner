@@ -9,5 +9,6 @@ echo "--> Activating virtual environment..."; source venv/bin/activate
 echo "--> Installing dependencies (pyyaml, requests)..."; pip install --upgrade pip --quiet; pip install -r requirements.txt --quiet
 echo ""; echo "=== ✅ Setup Completed Successfully! ==="; echo ""
 echo "To activate the environment in your shell, run:"; echo "    source venv/bin/activate"; echo ""
-echo "To run the scanner:"; echo "    python src/kukilab_scanner.py /path/to/target-skill"
-echo "To run with auto-fix:"; echo "    python src/kukilab_scanner.py /path/to/target-skill --fix"; echo ""
+echo "To check the installation on the bundled demo skill:"; echo "    python src/kukilab_scanner.py examples/demo-clean-skill"; echo ""
+echo "To scan your own skill, replace ~/my-skill with the folder that holds its SKILL.md:"; echo "    python src/kukilab_scanner.py ~/my-skill"
+echo "The same with auto-fix (changes the skill's files):"; echo "    python src/kukilab_scanner.py ~/my-skill --fix"; echo ""

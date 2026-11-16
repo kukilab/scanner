@@ -11,13 +11,33 @@
 
 ## Быстрый старт
 
+Установка и первая проверка. Блок можно вставить в терминал целиком:
+
 ```bash
 git clone https://github.com/kukilab/scanner.git && cd scanner
 bash setup.sh && source venv/bin/activate
-python src/kukilab_scanner.py /path/to/skill                     # отчёт в stdout
-python src/kukilab_scanner.py /path/to/skill --fix               # очистка + allowed-tools
-python src/kukilab_scanner.py /path/to/skill --sarif results.sarif --json results.json
+python src/kukilab_scanner.py examples/demo-clean-skill
 ```
+
+Последняя строка проверяет демонстрационный навык из репозитория. Отчёт с вердиктом `SAFE` означает, что сканер установлен и работает. Для сравнения: `examples/demo-malicious-skill` даёт `BLOCK`. В Windows вместо второй строки: `.\setup.ps1`, затем `.\venv\Scripts\Activate.ps1`.
+
+### Проверка своего навыка
+
+Укажите папку, в которой лежит `SKILL.md`. `~/my-skill` здесь только пример, замените его своим путём:
+
+```bash
+python src/kukilab_scanner.py ~/my-skill
+```
+
+В macOS путь можно не набирать: перетащите папку навыка из Finder в окно терминала.
+
+| Добавьте к команде | Результат |
+|---|---|
+| ничего | отчёт в терминале |
+| `--fix` | очистка невидимых символов и недостающий `allowed-tools`; меняет файлы навыка |
+| `--sarif results.sarif --json results.json` | отчёты в файлах SARIF и JSON |
+
+Ответ `Путь не найден` (код возврата 3) означает, что такой папки нет: проверьте путь.
 
 ## Модель для Step 2
 
@@ -31,9 +51,9 @@ python src/kukilab_scanner.py /path/to/skill --sarif results.sarif --json result
 | Совместимый сервер (OpenRouter, Mistral, локальная модель) | `KUKILAB_LLM_API_KEY`, если серверу нужен ключ | задаётся через `--model` |
 
 ```bash
-OPENAI_API_KEY=... python src/kukilab_scanner.py /path/to/skill                      # поставщик по ключу
-GEMINI_API_KEY=... python src/kukilab_scanner.py /path/to/skill --model gemini-3.6-flash
-python src/kukilab_scanner.py /path/to/skill --base-url http://localhost:11434/v1 --model llama3.3   # локальная модель
+OPENAI_API_KEY=... python src/kukilab_scanner.py ~/my-skill                      # поставщик по ключу
+GEMINI_API_KEY=... python src/kukilab_scanner.py ~/my-skill --model gemini-3.6-flash
+python src/kukilab_scanner.py ~/my-skill --base-url http://localhost:11434/v1 --model llama3.3   # локальная модель
 ```
 
 Линейки моделей у поставщиков меняются: если модель по умолчанию снята, задайте свою через `--model`. Ключ уходит только своему поставщику; в отчёте записано, какая модель делала проход (`api:<поставщик>:<модель>`). Текст навыка для модели — недоверенный ввод, и слабую модель проще уговорить ответить «всё чисто», поэтому для бейджа SAFE подходят не все модели (см. ниже).
